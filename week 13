@@ -1,0 +1,195 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define TABLE_SIZE 10 // Initial size of the hash table
+#define LOAD_FACTOR_THRESHOLD 0.7 // Threshold for load factor to trigger rehashing
+
+// Structure for a node in the linked list (used for chaining)
+struct Node {
+    int key;
+    int value;
+    struct Node *next;
+};
+
+// Structure for a hash table
+struct HashTable {
+    int size; // Current size of the hash table
+    int capacity; // Total capacity of the hash table
+    struct Node **table; // Array of pointers to nodes (for chaining)
+};
+
+// Function to create a new node for chaining
+struct Node *createNode(int key, int value) {
+    struct Node *newNode = (struct Node *)malloc(sizeof(struct Node));
+    if (newNode != NULL) {
+        newNode->key = key;
+        newNode->value = value;
+        newNode->next = NULL;
+    }
+    return newNode;
+}
+
+// Function to create a new hash table
+struct HashTable *createHashTable(int capacity) {
+    struct HashTable *ht = (struct HashTable *)malloc(sizeof(struct HashTable));
+    if (ht != NULL) {
+        ht->size = 0;
+        ht->capacity = capacity;
+        ht->table = (struct Node **)malloc(capacity * sizeof(struct Node *));
+        if (ht->table == NULL) {
+            free(ht);
+            return NULL;
+        }
+        // Initialize each slot to NULL (no chaining lists created yet)
+        for (int i = 0; i < capacity; ++i) {
+            ht->table[i] = NULL;
+        }
+    }
+    return ht;
+}
+
+// Hash function using modulo operation
+int hashFunction(int key, int capacity) {
+    return key % capacity;
+}
+
+// Function to insert key-value pair into hash table using chaining
+void insertChaining(struct HashTable *ht, int key, int value) {
+    int index = hashFunction(key, ht->capacity);
+    
+    // Create a new node
+    struct Node *newNode = createNode(key, value);
+    if (newNode == NULL) {
+        fprintf(stderr, "Memory allocation failed!\n");
+        return;
+    }
+    
+    // Insert into the chaining list at the computed index
+    newNode->next = ht->table[index];
+    ht->table[index] = newNode;
+    ht->size++;
+}
+
+// Function to retrieve value from hash table using chaining
+int getChaining(struct HashTable *ht, int key) {
+    int index = hashFunction(key, ht->capacity);
+    
+    // Traverse the chaining list at the computed index
+    struct Node *current = ht->table[index];
+    while (current != NULL) {
+        if (current->key == key) {
+            return current->value; // Return the value if key is found
+        }
+        current = current->next;
+    }
+    return -1; // Return -1 if key is not found
+}
+
+// Function to perform rehashing (used in closed addressing)
+void rehash(struct HashTable **ht) {
+    int oldCapacity = (*ht)->capacity;
+    struct HashTable *newHT = createHashTable(2 * oldCapacity); // Double the capacity
+    
+    // Reinsert all elements into the new table
+    for (int i = 0; i < oldCapacity; ++i) {
+        struct Node *current = (*ht)->table[i];
+        while (current != NULL) {
+            insertChaining(newHT, current->key, current->value);
+            current = current->next;
+        }
+    }
+    
+    // Free the old table
+    for (int i = 0; i < oldCapacity; ++i) {
+        struct Node *current = (*ht)->table[i];
+        while (current != NULL) {
+            struct Node *temp = current;
+            current = current->next;
+            free(temp);
+        }
+    }
+    free((*ht)->table);
+    free(*ht);
+    
+    // Update the hash table pointer to point to the new table
+    *ht = newHT;
+}
+
+// Function to insert key-value pair into hash table using open addressing (linear probing)
+void insertOpenAddressing(struct HashTable **ht, int key, int value) {
+    if ((*ht)->size >= LOAD_FACTOR_THRESHOLD * (*ht)->capacity) {
+        rehash(ht); // Rehash if load factor exceeds threshold
+    }
+    
+    int index = hashFunction(key, (*ht)->capacity);
+    
+    // Linear probing to find an empty slot
+    while ((*ht)->table[index] != NULL) {
+        index = (index + 1) % (*ht)->capacity;
+    }
+    
+    // Insert the new key-value pair
+    (*ht)->table[index] = createNode(key, value);
+    (*ht)->size++;
+}
+
+// Function to retrieve value from hash table using open addressing (linear probing)
+int getOpenAddressing(struct HashTable *ht, int key) {
+    int index = hashFunction(key, ht->capacity);
+    int originalIndex = index;
+    
+    // Linear probing to find the key
+    while (ht->table[index] != NULL) {
+        if (ht->table[index]->key == key) {
+            return ht->table[index]->value; // Return the value if key is found
+        }
+        index = (index + 1) % ht->capacity;
+        if (index == originalIndex) {
+            break; // Full circle traversal, key not found
+        }
+    }
+    return -1; // Return -1 if key is not found
+}
+
+// Function to free memory allocated for the hash table
+void freeHashTable(struct HashTable *ht) {
+    for (int i = 0; i < ht->capacity; ++i) {
+        struct Node *current = ht->table[i];
+        while (current != NULL) {
+            struct Node *temp = current;
+            current = current->next;
+            free(temp);
+        }
+    }
+    free(ht->table);
+    free(ht);
+}
+
+// Main function to demonstrate usage
+int main() {
+    struct HashTable *ht_chaining = createHashTable(TABLE_SIZE);
+    struct HashTable *ht_open_addressing = createHashTable(TABLE_SIZE);
+    
+    // Inserting key-value pairs using chaining
+    insertChaining(ht_chaining, 10, 100);
+    insertChaining(ht_chaining, 20, 200);
+    insertChaining(ht_chaining, 30, 300);
+    
+    // Retrieving values using chaining
+    printf("Chaining - Value at key 20: %d\n", getChaining(ht_chaining, 20)); // Output: 200
+    
+    // Inserting key-value pairs using open addressing
+    insertOpenAddressing(&ht_open_addressing, 15, 150);
+    insertOpenAddressing(&ht_open_addressing, 25, 250);
+    insertOpenAddressing(&ht_open_addressing, 35, 350);
+    
+    // Retrieving values using open addressing
+    printf("Open Addressing - Value at key 25: %d\n", getOpenAddressing(ht_open_addressing, 25)); // Output: 250
+    
+    // Freeing memory allocated for hash tables
+    freeHashTable(ht_chaining);
+    freeHashTable(ht_open_addressing);
+    
+    return 0;
+}
